@@ -1,0 +1,76 @@
+from cryptography.hazmat.primitives.serialization import pkcs12, Encoding, PrivateFormat, NoEncryption
+from cryptography.x509 import load_der_x509_certificate
+from pathlib import Path
+import sys
+
+def pfx_to_pem(pfx_path, password=None, output_dir="output"):
+    """Конвертирует PFX в PEM (сертификат + ключ) без OpenSSL."""
+    Path(output_dir).mkdir(exist_ok=True)
+    
+    pfx_name = Path(pfx_path).stem
+    cert_pem = Path(output_dir) / f"{pfx_name}_cert.pem"
+    key_pem = Path(output_dir) / f"{pfx_name}_key.pem"
+
+    try:
+        # Чтение PFX-файла
+        with open(pfx_path, "rb") as f:
+            pfx_data = f.read()
+        
+        # Распаковка PFX (пароль может быть None или bytes)
+        private_key, cert, additional_certs = pkcs12.load_key_and_certificates(
+            pfx_data, 
+            password.encode() if password else None
+        )
+        
+        # Сохранение сертификата в PEM
+        with open(cert_pem, "wb") as f:
+            f.write(cert.public_bytes(Encoding.PEM))
+        
+        # Сохранение приватного ключа в PEM
+        with open(key_pem, "wb") as f:
+            f.write(private_key.private_bytes(
+                Encoding.PEM,
+                PrivateFormat.PKCS8,
+                NoEncryption()  # Без пароля (можно заменить на BestAvailableEncryption)
+            ))
+        
+        print(f"[+] PFX → PEM:\nСертификат: {cert_pem}\nКлюч: {key_pem}")
+    
+    except Exception as e:
+        print(f"[-] Ошибка: {str(e)}")
+
+def cer_to_pem(cer_path, output_dir="output"):
+    """Конвертирует CER/DER в PEM без OpenSSL."""
+    Path(output_dir).mkdir(exist_ok=True)
+    cer_name = Path(cer_path).stem
+    pem_path = Path(output_dir) / f"{cer_name}.pem"
+
+    try:
+        with open(cer_path, "rb") as f:
+            cert_der = f.read()
+        
+        cert = load_der_x509_certificate(cert_der)
+        
+        with open(pem_path, "wb") as f:
+            f.write(cert.public_bytes(Encoding.PEM))
+        
+        print(f"[+] CER → PEM: {pem_path}")
+    
+    except Exception as e:
+        print(f"[-] Ошибка: {str(e)}")
+
+def main():
+    print("1. PFX → PEM\n2. CER/DER → PEM")
+    choice = input("Выберите действие (1/2): ")
+    input_path = input("Путь к файлу: ").strip('"')
+    
+    if choice == "1":
+        password = input("Пароль PFX (если есть): ")
+        pfx_to_pem(input_path, password or None)
+    elif choice == "2":
+        cer_to_pem(input_path)
+    else:
+        print("Некорректный выбор!")
+
+if __name__ == "__main__":
+    main()
